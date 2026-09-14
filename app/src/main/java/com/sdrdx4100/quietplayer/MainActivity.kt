@@ -15,7 +15,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import com.sdrdx4100.quietplayer.external.ExternalSessionService
@@ -40,6 +45,18 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by viewModel.state.collectAsStateWithLifecycle()
             val externalState by viewModel.externalState.collectAsStateWithLifecycle()
+            val configuration = LocalConfiguration.current
+            DisposableEffect(configuration.orientation) {
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                if (configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                    controller.systemBarsBehavior =
+                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    controller.hide(WindowInsetsCompat.Type.systemBars())
+                } else {
+                    controller.show(WindowInsetsCompat.Type.systemBars())
+                }
+                onDispose { }
+            }
             val audioPermission = if (Build.VERSION.SDK_INT >= 33) {
                 Manifest.permission.READ_MEDIA_AUDIO
             } else {

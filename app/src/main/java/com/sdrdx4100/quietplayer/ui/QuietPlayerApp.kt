@@ -189,9 +189,9 @@ private fun NowPlayingScreen(state: PlayerUiState, viewModel: MainViewModel, onL
         val landscape = maxWidth > maxHeight
         if (landscape) {
             Row(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp)) {
-                NowPlayingPane(state, viewModel, onLibrary, Modifier.weight(0.62f).fillMaxHeight())
+                NowPlayingPane(state, viewModel, onLibrary, Modifier.weight(0.68f).fillMaxHeight())
                 Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
-                QueuePane(state, viewModel, Modifier.weight(0.38f).fillMaxHeight())
+                QueuePane(state, viewModel, Modifier.weight(0.32f).fillMaxHeight())
             }
         } else {
             Column(Modifier.fillMaxSize()) {
@@ -214,11 +214,22 @@ private fun NowPlayingPane(
     BoxWithConstraints(modifier.padding(end = 22.dp)) {
         val wide = maxWidth > 560.dp
         if (wide) {
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                Artwork(item?.mediaMetadata?.artworkUri?.toString(), Modifier.weight(0.48f).aspectRatio(1f))
-                Spacer(Modifier.width(26.dp))
-                PlayerDetails(state, viewModel, onLibrary, Modifier.weight(0.52f))
-            }
+            val artSize = minOf(maxHeight, maxWidth * .59f)
+            Artwork(
+                item?.mediaMetadata?.artworkUri?.toString(),
+                Modifier.size(artSize).align(Alignment.CenterStart),
+            )
+            PlayerDetails(
+                state,
+                viewModel,
+                onLibrary,
+                Modifier
+                    .width(maxWidth * .52f)
+                    .align(Alignment.CenterEnd)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Background.copy(alpha = .96f))
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
+            )
         } else {
             Column(
                 Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp),
@@ -316,10 +327,10 @@ private fun PlaybackControls(state: PlayerUiState, viewModel: MainViewModel) {
 @Composable
 private fun QueuePane(state: PlayerUiState, viewModel: MainViewModel, modifier: Modifier) {
     val listState = rememberLazyListState()
-    Column(modifier.padding(start = 20.dp)) {
+    Column(modifier.padding(start = 16.dp)) {
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f)) {
-                Text("Up Next", fontSize = 20.sp, fontWeight = FontWeight.Medium)
+                Text("Up Next", fontSize = 18.sp, fontWeight = FontWeight.Medium)
                 Text("${state.queue.size} tracks", fontSize = 12.sp, color = SecondaryText)
             }
             Icon(Icons.Default.DragHandle, "Long press and drag to reorder", tint = SecondaryText, modifier = Modifier.padding(10.dp))
@@ -363,21 +374,21 @@ private fun QueueRow(
                 }
             }
             .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Artwork(item.mediaMetadata.artworkUri?.toString(), Modifier.size(42.dp))
-        Spacer(Modifier.width(11.dp))
+        Artwork(item.mediaMetadata.artworkUri?.toString(), Modifier.size(36.dp))
+        Spacer(Modifier.width(9.dp))
         if (playing) {
             Icon(Icons.Default.GraphicEq, null, tint = Accent, modifier = Modifier.size(15.dp))
             Spacer(Modifier.width(6.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
-            Text(item.mediaMetadata.artist?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = SecondaryText)
+            Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp)
+            Text(item.mediaMetadata.artist?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp, color = SecondaryText)
         }
         Text(formatDuration(item.mediaMetadata.extras?.getLong(DURATION_KEY) ?: 0L), color = SecondaryText, fontSize = 11.sp)
-        IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
+        IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Default.Close, "Remove from queue", Modifier.size(17.dp), tint = SecondaryText)
         }
     }
@@ -422,10 +433,21 @@ private fun ExternalSessionScreen(
     BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().testTag("external_session")) {
         val landscape = maxWidth > maxHeight
         val detail: @Composable (Modifier) -> Unit = { modifier ->
-            Row(modifier.padding(22.dp), verticalAlignment = Alignment.CenterVertically) {
-                Artwork(state.artwork, Modifier.weight(0.47f).aspectRatio(1f))
-                Spacer(Modifier.width(28.dp))
-                Column(Modifier.weight(0.53f), verticalArrangement = Arrangement.Center) {
+            BoxWithConstraints(modifier.padding(start = 22.dp, top = 16.dp, bottom = 16.dp)) {
+                val artSize = minOf(maxHeight, maxWidth * .59f)
+                Artwork(
+                    state.artwork,
+                    Modifier.size(artSize).align(Alignment.CenterStart),
+                )
+                Column(
+                    Modifier
+                        .width(maxWidth * .52f)
+                        .align(Alignment.CenterEnd)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Background.copy(alpha = .96f))
+                        .padding(horizontal = 24.dp, vertical = 20.dp),
+                    verticalArrangement = Arrangement.Center,
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Library") }
                         Text(state.appName ?: "External session", color = Accent, fontSize = 13.sp)
@@ -465,8 +487,8 @@ private fun ExternalSessionScreen(
             }
         }
         val queue: @Composable (Modifier) -> Unit = { modifier ->
-            Column(modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
-                Text("External Queue", fontSize = 20.sp, fontWeight = FontWeight.Medium)
+            Column(modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text("Up Next", fontSize = 18.sp, fontWeight = FontWeight.Medium)
                 Text(
                     if (state.queue.isEmpty()) "${state.appName ?: "The source app"} is not sharing its queue" else "${state.queue.size} tracks from ${state.appName}",
                     color = SecondaryText,
@@ -476,14 +498,14 @@ private fun ExternalSessionScreen(
                 LazyColumn {
                     itemsIndexed(state.queue, key = { _, item -> item.id }) { _, item ->
                         Row(
-                            Modifier.fillMaxWidth().clickable { ExternalSessionBridge.playQueueItem(item.id) }.padding(vertical = 8.dp),
+                            Modifier.fillMaxWidth().clickable { ExternalSessionBridge.playQueueItem(item.id) }.padding(vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Artwork(item.artwork, Modifier.size(44.dp))
-                            Spacer(Modifier.width(12.dp))
+                            Artwork(item.artwork, Modifier.size(36.dp))
+                            Spacer(Modifier.width(10.dp))
                             Column {
-                                Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(item.subtitle, color = SecondaryText, fontSize = 12.sp, maxLines = 1)
+                                Text(item.title, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(item.subtitle, color = SecondaryText, fontSize = 11.sp, maxLines = 1)
                             }
                         }
                     }
@@ -492,9 +514,9 @@ private fun ExternalSessionScreen(
         }
         if (landscape) {
             Row(Modifier.fillMaxSize()) {
-                detail(Modifier.weight(.62f).fillMaxHeight())
+                detail(Modifier.weight(.68f).fillMaxHeight())
                 Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
-                queue(Modifier.weight(.38f).fillMaxHeight())
+                queue(Modifier.weight(.32f).fillMaxHeight())
             }
         } else {
             Column(Modifier.fillMaxSize()) {
