@@ -8,6 +8,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import com.sdrdx4100.quietplayer.data.MusicRepository
 import com.sdrdx4100.quietplayer.data.Song
+import com.sdrdx4100.quietplayer.external.ExternalSessionBridge
 import com.sdrdx4100.quietplayer.playback.PlayerConnection
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +38,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val connection = PlayerConnection(application)
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
+    val externalState = ExternalSessionBridge.state
 
     init {
         viewModelScope.launch {

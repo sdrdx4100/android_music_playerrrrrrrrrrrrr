@@ -33,9 +33,11 @@ import com.sdrdx4100.quietplayer.MainViewModel
 import com.sdrdx4100.quietplayer.PlayerUiState
 import com.sdrdx4100.quietplayer.data.Song
 import com.sdrdx4100.quietplayer.data.DURATION_KEY
+import com.sdrdx4100.quietplayer.external.ExternalSessionBridge
+import com.sdrdx4100.quietplayer.external.ExternalSessionState
 import kotlin.math.roundToLong
 
-private enum class Destination { Library, NowPlaying }
+private enum class Destination { Library, NowPlaying, External }
 private enum class LibraryTab { Songs, Albums, Artists }
 
 @Composable
@@ -43,6 +45,9 @@ fun QuietPlayerApp(
     state: PlayerUiState,
     hasAudioPermission: Boolean,
     requestPermission: () -> Unit,
+    externalState: ExternalSessionState,
+    hasNotificationAccess: Boolean,
+    requestNotificationAccess: () -> Unit,
     viewModel: MainViewModel,
 ) {
     var destination by rememberSaveable { mutableStateOf(Destination.Library) }
@@ -61,12 +66,19 @@ fun QuietPlayerApp(
                     !hasAudioPermission -> PermissionScreen(requestPermission)
                     destination == Destination.Library -> LibraryScreen(
                         state = state,
+                        onExternal = { destination = Destination.External },
                         onSong = { song, source ->
                             viewModel.playSong(song, source)
                             destination = Destination.NowPlaying
                         },
                     )
-                    else -> NowPlayingScreen(state, viewModel, { destination = Destination.Library })
+                    destination == Destination.NowPlaying -> NowPlayingScreen(state, viewModel, { destination = Destination.Library })
+                    else -> ExternalSessionScreen(
+                        state = externalState,
+                        hasAccess = hasNotificationAccess,
+                        requestAccess = requestNotificationAccess,
+                        onLibrary = { destination = Destination.Library },
+                    )
                 }
             }
         }
@@ -95,7 +107,7 @@ private fun PermissionScreen(onRequest: () -> Unit) {
 }
 
 @Composable
-private fun LibraryScreen(state: PlayerUiState, onSong: (Song, List<Song>) -> Unit) {
+private fun LibraryScreen(state: PlayerUiState, onExternal: () -> Unit, onSong: (Song, List<Song>) -> Unit) {
     var tab by rememberSaveable { mutableStateOf(LibraryTab.Songs) }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(
@@ -104,6 +116,12 @@ private fun LibraryScreen(state: PlayerUiState, onSong: (Song, List<Song>) -> Un
         ) {
             Text("Library", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Text("${state.songs.size} songs", color = SecondaryText)
+            Spacer(Modifier.width(12.dp))
+            OutlinedButton(onClick = onExternal) {
+                Icon(Icons.Default.Cast, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(7.dp))
+                Text("External")
+            }
         }
         PrimaryTabRow(selectedTabIndex = tab.ordinal, containerColor = Background, divider = {}) {
             LibraryTab.entries.forEach { item ->
@@ -366,7 +384,130 @@ private fun QueueRow(
 }
 
 @Composable
-private fun Artwork(uri: String?, modifier: Modifier) {
+private fun ExternalSessionScreen(
+    state: ExternalSessionState,
+    hasAccess: Boolean,
+    requestAccess: () -> Unit,
+    onLibrary: () -> Unit,
+) {
+    if (!hasAccess) {
+        Column(
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(28.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(Icons.Default.Cast, null, Modifier.size(42.dp), tint = Accent)
+            Spacer(Modifier.height(18.dp))
+            Text("Control another music app", fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Notification access lets Quiet Player display and control the active Apple Music media session. Notification content is not stored.",
+                color = SecondaryText,
+            )
+            Spacer(Modifier.height(22.dp))
+            Button(onClick = requestAccess) { Text("Open notification access") }
+            TextButton(onClick = onLibrary) { Text("Back to local library") }
+        }
+        return
+    }
+
+    var clock by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+    LaunchedEffect(state.isPlaying, state.positionMs) {
+        while (state.isPlaying) {
+            clock = android.os.SystemClock.elapsedRealtime()
+            kotlinx.coroutines.delay(500)
+        }
+    }
+    val position = state.estimatedPosition(clock)
+    BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().testTag("external_session")) {
+        val landscape = maxWidth > maxHeight
+        val detail: @Composable (Modifier) -> Unit = { modifier ->
+            Row(modifier.padding(22.dp), verticalAlignment = Alignment.CenterVertically) {
+                Artwork(state.artwork, Modifier.weight(0.47f).aspectRatio(1f))
+                Spacer(Modifier.width(28.dp))
+                Column(Modifier.weight(0.53f), verticalArrangement = Arrangement.Center) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Library") }
+                        Text(state.appName ?: "External session", color = Accent, fontSize = 13.sp)
+                    }
+                    Text(state.title, fontSize = 25.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(7.dp))
+                    Text(state.artist, color = SecondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(state.album, color = SecondaryText.copy(alpha = .72f), fontSize = 13.sp, maxLines = 1)
+                    Spacer(Modifier.height(18.dp))
+                    Slider(
+                        value = position.toFloat().coerceIn(0f, state.durationMs.coerceAtLeast(1L).toFloat()),
+                        onValueChange = { ExternalSessionBridge.seekTo(it.toLong()) },
+                        valueRange = 0f..state.durationMs.coerceAtLeast(1L).toFloat(),
+                        enabled = state.connected && state.durationMs > 0,
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(formatDuration(position), color = SecondaryText, fontSize = 11.sp)
+                        Text(formatDuration(state.durationMs), color = SecondaryText, fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = ExternalSessionBridge::previous, modifier = Modifier.size(54.dp)) {
+                            Icon(Icons.Default.SkipPrevious, "Previous", Modifier.size(30.dp))
+                        }
+                        FilledIconButton(
+                            onClick = ExternalSessionBridge::togglePlay,
+                            modifier = Modifier.size(60.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(containerColor = PrimaryText, contentColor = Background),
+                        ) {
+                            Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play or pause", Modifier.size(32.dp))
+                        }
+                        IconButton(onClick = ExternalSessionBridge::next, modifier = Modifier.size(54.dp)) {
+                            Icon(Icons.Default.SkipNext, "Next", Modifier.size(30.dp))
+                        }
+                    }
+                }
+            }
+        }
+        val queue: @Composable (Modifier) -> Unit = { modifier ->
+            Column(modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
+                Text("External Queue", fontSize = 20.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    if (state.queue.isEmpty()) "${state.appName ?: "The source app"} is not sharing its queue" else "${state.queue.size} tracks from ${state.appName}",
+                    color = SecondaryText,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                LazyColumn {
+                    itemsIndexed(state.queue, key = { _, item -> item.id }) { _, item ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { ExternalSessionBridge.playQueueItem(item.id) }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Artwork(item.artwork, Modifier.size(44.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(item.subtitle, color = SecondaryText, fontSize = 12.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (landscape) {
+            Row(Modifier.fillMaxSize()) {
+                detail(Modifier.weight(.62f).fillMaxHeight())
+                Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
+                queue(Modifier.weight(.38f).fillMaxHeight())
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                detail(Modifier.weight(.65f).fillMaxWidth())
+                Box(Modifier.height(1.dp).fillMaxWidth().background(Hairline))
+                queue(Modifier.weight(.35f).fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun Artwork(uri: Any?, modifier: Modifier) {
     Box(modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceRaised), contentAlignment = Alignment.Center) {
         SubcomposeAsyncImage(
                 model = uri,

@@ -3,6 +3,8 @@ package com.sdrdx4100.quietplayer
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.content.Intent
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -11,17 +13,33 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.core.app.NotificationManagerCompat
+import android.content.ComponentName
+import android.service.notification.NotificationListenerService
+import com.sdrdx4100.quietplayer.external.ExternalSessionService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sdrdx4100.quietplayer.ui.QuietPlayerApp
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+    private var hasNotificationAccess by mutableStateOf(false)
+
+    override fun onResume() {
+        super.onResume()
+        hasNotificationAccess = NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+        if (hasNotificationAccess && Build.VERSION.SDK_INT >= 24) {
+            NotificationListenerService.requestRebind(ComponentName(this, ExternalSessionService::class.java))
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             val state by viewModel.state.collectAsStateWithLifecycle()
+            val externalState by viewModel.externalState.collectAsStateWithLifecycle()
             val audioPermission = if (Build.VERSION.SDK_INT >= 33) {
                 Manifest.permission.READ_MEDIA_AUDIO
             } else {
@@ -41,6 +59,11 @@ class MainActivity : ComponentActivity() {
                 state = state,
                 hasAudioPermission = checkSelfPermission(audioPermission) == android.content.pm.PackageManager.PERMISSION_GRANTED,
                 requestPermission = { permissionLauncher.launch(audioPermission) },
+                externalState = externalState,
+                hasNotificationAccess = hasNotificationAccess,
+                requestNotificationAccess = {
+                    startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                },
                 viewModel = viewModel,
             )
         }
