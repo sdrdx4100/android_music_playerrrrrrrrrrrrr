@@ -2,9 +2,9 @@
 
 スマートフォンをデスクや車載ホルダーへ横置きして使うことを第一に設計した、ローカル音楽プレイヤーです。大きなアルバムアート、必要十分な操作、常時見える再生キューだけに視線を集中させた静かなDark UIを採用しています。
 
-![Landscape Now Playing](docs/screenshots/landscape-now-playing.svg)
+![Landscape Now Playing running on a Motorola edge 50 pro](docs/screenshots/landscape-now-playing.png)
 
-> 画像はUI構成を示すリファレンスレンダーです。実際のアルバムアートとメタデータは端末のMediaStoreから表示されます。
+> Motorola edge 50 pro（実機）で撮影。表示確認用のローカル音声を再生しています。
 
 ## 実装済み機能
 
