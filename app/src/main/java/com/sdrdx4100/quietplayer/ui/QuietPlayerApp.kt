@@ -189,9 +189,9 @@ private fun NowPlayingScreen(state: PlayerUiState, viewModel: MainViewModel, onL
         val landscape = maxWidth > maxHeight
         if (landscape) {
             Row(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp)) {
-                NowPlayingPane(state, viewModel, onLibrary, Modifier.weight(0.68f).fillMaxHeight())
+                NowPlayingPane(state, viewModel, onLibrary, Modifier.weight(0.70f).fillMaxHeight())
                 Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
-                QueuePane(state, viewModel, Modifier.weight(0.32f).fillMaxHeight())
+                QueuePane(state, viewModel, Modifier.weight(0.30f).fillMaxHeight())
             }
         } else {
             Column(Modifier.fillMaxSize()) {
@@ -214,22 +214,17 @@ private fun NowPlayingPane(
     BoxWithConstraints(modifier.padding(end = 22.dp)) {
         val wide = maxWidth > 560.dp
         if (wide) {
-            val artSize = minOf(maxHeight, maxWidth * .59f)
-            Artwork(
-                item?.mediaMetadata?.artworkUri?.toString(),
-                Modifier.size(artSize).align(Alignment.CenterStart),
-            )
-            PlayerDetails(
-                state,
-                viewModel,
-                onLibrary,
-                Modifier
-                    .width(maxWidth * .52f)
-                    .align(Alignment.CenterEnd)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Background.copy(alpha = .96f))
-                    .padding(horizontal = 24.dp, vertical = 20.dp),
-            )
+            Row(
+                Modifier.fillMaxSize().padding(start = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Artwork(
+                    item?.mediaMetadata?.artworkUri?.toString(),
+                    Modifier.weight(.55f).aspectRatio(1f),
+                )
+                Spacer(Modifier.width(34.dp))
+                PlayerDetails(state, viewModel, onLibrary, Modifier.weight(.45f).padding(end = 8.dp))
+            }
         } else {
             Column(
                 Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp),
@@ -433,19 +428,17 @@ private fun ExternalSessionScreen(
     BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().testTag("external_session")) {
         val landscape = maxWidth > maxHeight
         val detail: @Composable (Modifier) -> Unit = { modifier ->
-            BoxWithConstraints(modifier.padding(start = 22.dp, top = 16.dp, bottom = 16.dp)) {
-                val artSize = minOf(maxHeight, maxWidth * .59f)
+            Row(
+                modifier.padding(start = 28.dp, end = 24.dp, top = 22.dp, bottom = 22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Artwork(
                     state.artwork,
-                    Modifier.size(artSize).align(Alignment.CenterStart),
+                    Modifier.weight(.55f).aspectRatio(1f),
                 )
+                Spacer(Modifier.width(38.dp))
                 Column(
-                    Modifier
-                        .width(maxWidth * .52f)
-                        .align(Alignment.CenterEnd)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Background.copy(alpha = .96f))
-                        .padding(horizontal = 24.dp, vertical = 20.dp),
+                    Modifier.weight(.45f),
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -514,9 +507,9 @@ private fun ExternalSessionScreen(
         }
         if (landscape) {
             Row(Modifier.fillMaxSize()) {
-                detail(Modifier.weight(.68f).fillMaxHeight())
+                detail(Modifier.weight(.70f).fillMaxHeight())
                 Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
-                queue(Modifier.weight(.32f).fillMaxHeight())
+                queue(Modifier.weight(.30f).fillMaxHeight())
             }
         } else {
             Column(Modifier.fillMaxSize()) {
