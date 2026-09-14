@@ -22,21 +22,27 @@ data class PlayerUiState(
     val queue: List<MediaItem> = emptyList(),
     val currentIndex: Int = C.INDEX_UNSET,
     val isPlaying: Boolean = false,
-    val positionMs: Long = 0L,
-    val durationMs: Long = 0L,
     val shuffle: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
+    val volume: Float = 1f,
     val scanning: Boolean = false,
     val error: String? = null,
 ) {
     val currentItem: MediaItem? get() = queue.getOrNull(currentIndex)
 }
 
+data class PlaybackPosition(
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L,
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MusicRepository(application)
     private val connection = PlayerConnection(application)
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
+    private val _position = MutableStateFlow(PlaybackPosition())
+    val position: StateFlow<PlaybackPosition> = _position.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -92,6 +98,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun next() = connection.controller?.seekToNextMediaItem()
     fun seekTo(positionMs: Long) = connection.controller?.seekTo(positionMs)
 
+    fun setVolume(volume: Float) {
+        val clamped = volume.coerceIn(0f, 1f)
+        connection.controller?.volume = clamped
+        _state.update { it.copy(volume = clamped) }
+    }
+
     fun toggleShuffle() = connection.controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
 
     fun cycleRepeat() = connection.controller?.let {
@@ -115,7 +127,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun syncPosition() {
         val player = connection.controller ?: return
-        _state.update {
+        _position.update {
             it.copy(
                 positionMs = player.currentPosition.coerceAtLeast(0L),
                 durationMs = player.duration.takeIf { value -> value != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L,
@@ -130,12 +142,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 queue = List(player.mediaItemCount, player::getMediaItemAt),
                 currentIndex = player.currentMediaItemIndex,
                 isPlaying = player.isPlaying,
-                positionMs = player.currentPosition.coerceAtLeast(0L),
-                durationMs = player.duration.takeIf { value -> value != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L,
                 shuffle = player.shuffleModeEnabled,
                 repeatMode = player.repeatMode,
+                volume = player.volume,
             )
         }
+        syncPosition()
     }
 
     override fun onCleared() {

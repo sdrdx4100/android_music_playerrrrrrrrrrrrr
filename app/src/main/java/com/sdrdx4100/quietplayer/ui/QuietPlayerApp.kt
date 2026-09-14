@@ -25,10 +25,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import coil3.compose.LocalPlatformContext
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.sdrdx4100.quietplayer.MainViewModel
 import com.sdrdx4100.quietplayer.PlayerUiState
 import com.sdrdx4100.quietplayer.data.Song
@@ -192,12 +196,13 @@ private fun NowPlayingPane(
     onLibrary: () -> Unit,
     modifier: Modifier,
 ) {
-    val item = state.currentItem
+    val songsById = rememberSongsById(state.songs)
+    val artworkUri = remember(state.currentItem, songsById) { state.currentItem?.let { artworkUriFor(it, songsById) } }
     BoxWithConstraints(modifier.padding(end = 22.dp)) {
         val wide = maxWidth > 560.dp
         if (wide) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                Artwork(item?.mediaMetadata?.artworkUri?.toString(), Modifier.weight(0.48f).aspectRatio(1f))
+                Artwork(artworkUri, Modifier.weight(0.48f).aspectRatio(1f))
                 Spacer(Modifier.width(26.dp))
                 PlayerDetails(state, viewModel, onLibrary, Modifier.weight(0.52f))
             }
@@ -213,7 +218,7 @@ private fun NowPlayingPane(
                     Spacer(Modifier.weight(1f))
                     Spacer(Modifier.size(48.dp))
                 }
-                Artwork(item?.mediaMetadata?.artworkUri?.toString(), Modifier.weight(1f).aspectRatio(1f))
+                Artwork(artworkUri, Modifier.weight(1f).aspectRatio(1f))
                 Spacer(Modifier.height(14.dp))
                 PlayerDetails(state, viewModel, onLibrary = null, Modifier.fillMaxWidth())
             }
@@ -229,8 +234,9 @@ private fun PlayerDetails(
     modifier: Modifier,
 ) {
     val metadata = state.currentItem?.mediaMetadata
+    val position by viewModel.position.collectAsStateWithLifecycle()
     var pendingSeek by remember { mutableStateOf<Float?>(null) }
-    val sliderValue = pendingSeek ?: state.positionMs.toFloat()
+    val sliderValue = pendingSeek ?: position.positionMs.toFloat()
     Column(modifier, verticalArrangement = Arrangement.Center) {
         if (onLibrary != null) {
             IconButton(onClick = onLibrary, modifier = Modifier.offset(x = (-12).dp)) {
@@ -250,19 +256,43 @@ private fun PlayerDetails(
         Text(metadata?.albumTitle?.toString().orEmpty(), color = SecondaryText.copy(alpha = 0.72f), fontSize = 13.sp, maxLines = 1)
         Spacer(Modifier.height(20.dp))
         Slider(
-            value = sliderValue.coerceIn(0f, state.durationMs.coerceAtLeast(1L).toFloat()),
+            value = sliderValue.coerceIn(0f, position.durationMs.coerceAtLeast(1L).toFloat()),
             onValueChange = { pendingSeek = it },
             onValueChangeFinished = { pendingSeek?.roundToLong()?.let(viewModel::seekTo); pendingSeek = null },
-            valueRange = 0f..state.durationMs.coerceAtLeast(1L).toFloat(),
+            valueRange = 0f..position.durationMs.coerceAtLeast(1L).toFloat(),
             enabled = state.currentItem != null,
             modifier = Modifier.height(24.dp).testTag("seek_bar"),
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(formatDuration(sliderValue.toLong()), color = SecondaryText, fontSize = 11.sp)
-            Text(formatDuration(state.durationMs), color = SecondaryText, fontSize = 11.sp)
+            Text(formatDuration(position.durationMs), color = SecondaryText, fontSize = 11.sp)
         }
         Spacer(Modifier.height(10.dp))
         PlaybackControls(state, viewModel)
+        Spacer(Modifier.height(6.dp))
+        VolumeControl(state.volume, viewModel::setVolume)
+    }
+}
+
+@Composable
+private fun VolumeControl(volume: Float, onVolumeChange: (Float) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            when {
+                volume <= 0f -> Icons.Default.VolumeOff
+                volume < 0.5f -> Icons.Default.VolumeDown
+                else -> Icons.Default.VolumeUp
+            },
+            "Volume",
+            tint = SecondaryText,
+            modifier = Modifier.size(20.dp),
+        )
+        Slider(
+            value = volume,
+            onValueChange = onVolumeChange,
+            valueRange = 0f..1f,
+            modifier = Modifier.weight(1f).height(24.dp).padding(start = 10.dp).testTag("volume_slider"),
+        )
     }
 }
 
@@ -298,6 +328,7 @@ private fun PlaybackControls(state: PlayerUiState, viewModel: MainViewModel) {
 @Composable
 private fun QueuePane(state: PlayerUiState, viewModel: MainViewModel, modifier: Modifier) {
     val listState = rememberLazyListState()
+    val songsById = rememberSongsById(state.songs)
     Column(modifier.padding(start = 20.dp)) {
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f)) {
@@ -310,6 +341,7 @@ private fun QueuePane(state: PlayerUiState, viewModel: MainViewModel, modifier: 
             itemsIndexed(state.queue, key = { _, item -> item.mediaId }) { index, item ->
                 QueueRow(
                     item = item,
+                    artworkUri = artworkUriFor(item, songsById),
                     playing = index == state.currentIndex,
                     onClick = { viewModel.playQueueIndex(index) },
                     onRemove = { viewModel.removeQueueItem(index) },
@@ -323,6 +355,7 @@ private fun QueuePane(state: PlayerUiState, viewModel: MainViewModel, modifier: 
 @Composable
 private fun QueueRow(
     item: MediaItem,
+    artworkUri: String?,
     playing: Boolean,
     onClick: () -> Unit,
     onRemove: () -> Unit,
@@ -348,7 +381,7 @@ private fun QueueRow(
             .padding(horizontal = 9.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Artwork(item.mediaMetadata.artworkUri?.toString(), Modifier.size(42.dp))
+        Artwork(artworkUri, Modifier.size(42.dp))
         Spacer(Modifier.width(11.dp))
         if (playing) {
             Icon(Icons.Default.GraphicEq, null, tint = Accent, modifier = Modifier.size(15.dp))
@@ -367,9 +400,16 @@ private fun QueueRow(
 
 @Composable
 private fun Artwork(uri: String?, modifier: Modifier) {
+    val context = LocalPlatformContext.current
+    val request = remember(uri) {
+        ImageRequest.Builder(context)
+            .data(uri)
+            .crossfade(200)
+            .build()
+    }
     Box(modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceRaised), contentAlignment = Alignment.Center) {
         SubcomposeAsyncImage(
-                model = uri,
+                model = request,
                 contentDescription = "Album artwork",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -387,14 +427,24 @@ private fun ArtworkPlaceholder() {
     }
 }
 
+// MediaController-synced items can drop artwork metadata away from the current position; prefer the local Song artwork.
+@Composable
+private fun rememberSongsById(songs: List<Song>): Map<String, Song> =
+    remember(songs) { songs.associateBy { it.id.toString() } }
+
+private fun artworkUriFor(item: MediaItem, songsById: Map<String, Song>): String? =
+    songsById[item.mediaId]?.artworkUri?.toString() ?: item.mediaMetadata.artworkUri?.toString()
+
 @Composable
 private fun MiniPlayer(state: PlayerUiState, onClick: () -> Unit, onToggle: () -> Unit) {
     val item = state.currentItem ?: return
+    val songsById = rememberSongsById(state.songs)
+    val artworkUri = remember(item, songsById) { artworkUriFor(item, songsById) }
     Row(
         Modifier.fillMaxWidth().background(Surface).clickable(onClick = onClick).navigationBarsPadding().padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Artwork(item.mediaMetadata.artworkUri?.toString(), Modifier.size(44.dp))
+        Artwork(artworkUri, Modifier.size(44.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
