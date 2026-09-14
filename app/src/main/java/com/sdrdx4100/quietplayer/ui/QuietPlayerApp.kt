@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -17,6 +18,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -221,6 +225,7 @@ private fun NowPlayingPane(
                 Artwork(
                     item?.mediaMetadata?.artworkUri?.toString(),
                     Modifier.weight(.55f).aspectRatio(1f),
+                    elevated = true,
                 )
                 Spacer(Modifier.width(34.dp))
                 PlayerDetails(state, viewModel, onLibrary, Modifier.weight(.45f).padding(end = 8.dp))
@@ -246,6 +251,7 @@ private fun NowPlayingPane(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun PlayerDetails(
     state: PlayerUiState,
     viewModel: MainViewModel,
@@ -263,14 +269,14 @@ private fun PlayerDetails(
         }
         Text(
             metadata?.title?.toString() ?: "Choose a song",
-            fontSize = 24.sp,
-            lineHeight = 29.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 32.sp,
+            lineHeight = 38.sp,
+            fontWeight = FontWeight.Bold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(7.dp))
-        Text(metadata?.artist?.toString() ?: "Quiet Player", color = SecondaryText, fontSize = 15.sp, maxLines = 1)
+        Text(metadata?.artist?.toString() ?: "Quiet Player", color = PrimaryText.copy(alpha = .70f), fontSize = 17.sp, maxLines = 1)
         Text(metadata?.albumTitle?.toString().orEmpty(), color = SecondaryText.copy(alpha = 0.72f), fontSize = 13.sp, maxLines = 1)
         Spacer(Modifier.height(20.dp))
         Slider(
@@ -280,6 +286,9 @@ private fun PlayerDetails(
             valueRange = 0f..state.durationMs.coerceAtLeast(1L).toFloat(),
             enabled = state.currentItem != null,
             modifier = Modifier.height(24.dp).testTag("seek_bar"),
+            thumb = {
+                Box(Modifier.size(12.dp).background(PrimaryText, CircleShape))
+            },
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(formatDuration(sliderValue.toLong()), color = SecondaryText, fontSize = 11.sp)
@@ -379,8 +388,20 @@ private fun QueueRow(
             Spacer(Modifier.width(6.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp)
-            Text(item.mediaMetadata.artist?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp, color = SecondaryText)
+            Text(
+                item.mediaMetadata.title?.toString().orEmpty(),
+                color = if (playing) PrimaryText else SecondaryText.copy(alpha = .58f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 13.sp,
+            )
+            Text(
+                item.mediaMetadata.artist?.toString().orEmpty(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 11.sp,
+                color = SecondaryText.copy(alpha = if (playing) .8f else .42f),
+            )
         }
         Text(formatDuration(item.mediaMetadata.extras?.getLong(DURATION_KEY) ?: 0L), color = SecondaryText, fontSize = 11.sp)
         IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
@@ -390,6 +411,7 @@ private fun QueueRow(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun ExternalSessionScreen(
     state: ExternalSessionState,
     hasAccess: Boolean,
@@ -429,12 +451,21 @@ private fun ExternalSessionScreen(
         val landscape = maxWidth > maxHeight
         val detail: @Composable (Modifier) -> Unit = { modifier ->
             Row(
-                modifier.padding(start = 28.dp, end = 24.dp, top = 22.dp, bottom = 22.dp),
+                modifier
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(state.accentColor).copy(alpha = .22f), Color.Transparent),
+                            center = Offset(380f, 560f),
+                            radius = 1050f,
+                        )
+                    )
+                    .padding(start = 28.dp, end = 24.dp, top = 22.dp, bottom = 22.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Artwork(
                     state.artwork,
                     Modifier.weight(.55f).aspectRatio(1f),
+                    elevated = true,
                 )
                 Spacer(Modifier.width(38.dp))
                 Column(
@@ -445,9 +476,9 @@ private fun ExternalSessionScreen(
                         IconButton(onClick = onLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Library") }
                         Text(state.appName ?: "External session", color = Accent, fontSize = 13.sp)
                     }
-                    Text(state.title, fontSize = 25.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(state.title, fontSize = 34.sp, lineHeight = 39.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.height(7.dp))
-                    Text(state.artist, color = SecondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(state.artist, color = PrimaryText.copy(alpha = .70f), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(state.album, color = SecondaryText.copy(alpha = .72f), fontSize = 13.sp, maxLines = 1)
                     Spacer(Modifier.height(18.dp))
                     Slider(
@@ -455,6 +486,9 @@ private fun ExternalSessionScreen(
                         onValueChange = { ExternalSessionBridge.seekTo(it.toLong()) },
                         valueRange = 0f..state.durationMs.coerceAtLeast(1L).toFloat(),
                         enabled = state.connected && state.durationMs > 0,
+                        thumb = {
+                            Box(Modifier.size(12.dp).background(PrimaryText, CircleShape))
+                        },
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(formatDuration(position), color = SecondaryText, fontSize = 11.sp)
@@ -490,15 +524,26 @@ private fun ExternalSessionScreen(
                 Spacer(Modifier.height(12.dp))
                 LazyColumn {
                     itemsIndexed(state.queue, key = { _, item -> item.id }) { _, item ->
+                        val current = item.id == state.currentQueueId
                         Row(
-                            Modifier.fillMaxWidth().clickable { ExternalSessionBridge.playQueueItem(item.id) }.padding(vertical = 5.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .background(if (current) SurfaceRaised else Color.Transparent, RoundedCornerShape(8.dp))
+                                .clickable { ExternalSessionBridge.playQueueItem(item.id) }
+                                .padding(horizontal = 7.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Artwork(item.artwork, Modifier.size(36.dp))
                             Spacer(Modifier.width(10.dp))
                             Column {
-                                Text(item.title, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(item.subtitle, color = SecondaryText, fontSize = 11.sp, maxLines = 1)
+                                Text(
+                                    item.title,
+                                    color = if (current) PrimaryText else SecondaryText.copy(alpha = .58f),
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(item.subtitle, color = SecondaryText.copy(alpha = if (current) .8f else .42f), fontSize = 11.sp, maxLines = 1)
                             }
                         }
                     }
@@ -522,8 +567,10 @@ private fun ExternalSessionScreen(
 }
 
 @Composable
-private fun Artwork(uri: Any?, modifier: Modifier) {
-    Box(modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceRaised), contentAlignment = Alignment.Center) {
+private fun Artwork(uri: Any?, modifier: Modifier, elevated: Boolean = false) {
+    val shape = RoundedCornerShape(if (elevated) 16.dp else 9.dp)
+    val styled = if (elevated) modifier.shadow(14.dp, shape, ambientColor = Color.Black, spotColor = Color.Black) else modifier
+    Box(styled.clip(shape).background(SurfaceRaised), contentAlignment = Alignment.Center) {
         SubcomposeAsyncImage(
                 model = uri,
                 contentDescription = "Album artwork",

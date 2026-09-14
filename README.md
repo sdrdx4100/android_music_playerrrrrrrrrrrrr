@@ -21,6 +21,7 @@
 - Edge-to-edgeとSafe Area対応
 - External Sessionモード（Apple MusicなどのMediaSessionを表示・操作）
 - 外部セッションの曲情報、Album Art、Seek、前後曲、Play / Pause、公開キュー
+- Album Artの代表色を減彩した控えめな背景アクセント（External Session）
 
 歌詞、Visualizer、常時アニメーションは意図的に実装していません。
 
@@ -86,7 +87,6 @@ External Sessionは、初回にAndroid設定画面から「Quiet Player media co
 ## Known Issues / TODO
 
 - キュー全体はMediaStoreから再構成し、前回曲・位置のみ復元します。任意編集したキュー順の永続化は未対応です。
-- Album Artからの動的アクセント色抽出は未実装です。読みやすさを優先して抑えた固定色を使用しています。
 - Android Auto専用のブラウズツリーは未実装です（標準Bluetooth / headset controlsには対応）。
 - 端末メーカーごとのバックグラウンド制限は実機検証が必要です。
 - External SessionのShuffle / Repeat操作は、アプリごとに異なるCustom Actionとなるため未対応です。

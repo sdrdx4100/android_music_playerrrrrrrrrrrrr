@@ -7,6 +7,8 @@ import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import androidx.core.graphics.ColorUtils
+import androidx.palette.graphics.Palette
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +36,8 @@ data class ExternalSessionState(
     val isPlaying: Boolean = false,
     val actions: Long = 0L,
     val queue: List<ExternalQueueItem> = emptyList(),
+    val currentQueueId: Long = -1L,
+    val accentColor: Int = 0xFF60736B.toInt(),
 ) {
     fun estimatedPosition(nowMs: Long = android.os.SystemClock.elapsedRealtime()): Long {
         val elapsed = if (isPlaying) ((nowMs - updateTimeMs) * speed).toLong() else 0L
@@ -64,6 +68,7 @@ object ExternalSessionBridge {
             val info = context.packageManager.getApplicationInfo(packageName, 0)
             context.packageManager.getApplicationLabel(info).toString()
         }.getOrDefault(packageName)
+        val artwork = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
         _state.value = ExternalSessionState(
             connected = true,
             packageName = packageName,
@@ -71,13 +76,15 @@ object ExternalSessionBridge {
             title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty().ifBlank { "Unknown title" },
             artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty().ifBlank { "Unknown artist" },
             album = metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty(),
-            artwork = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART),
+            artwork = artwork,
             durationMs = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION)?.coerceAtLeast(0L) ?: 0L,
             positionMs = playback?.position?.coerceAtLeast(0L) ?: 0L,
             updateTimeMs = playback?.lastPositionUpdateTime ?: 0L,
             speed = playback?.playbackSpeed ?: 0f,
             isPlaying = playback?.state == PlaybackState.STATE_PLAYING,
             actions = playback?.actions ?: 0L,
+            currentQueueId = playback?.activeQueueItemId ?: -1L,
+            accentColor = artwork?.let(::mutedArtworkColor) ?: 0xFF60736B.toInt(),
             queue = active.queue.orEmpty().map { item ->
                 ExternalQueueItem(
                     id = item.queueId,
@@ -103,6 +110,16 @@ object ExternalSessionBridge {
         "com.amazon.mp3" -> "Amazon Music"
         "com.spotify.music" -> "Spotify"
         else -> null
+    }
+
+    private fun mutedArtworkColor(bitmap: Bitmap): Int {
+        val source = Palette.from(bitmap).maximumColorCount(12).generate().dominantSwatch?.rgb
+            ?: return 0xFF60736B.toInt()
+        val hsl = FloatArray(3)
+        ColorUtils.colorToHSL(source, hsl)
+        hsl[1] = hsl[1].coerceIn(.16f, .34f)
+        hsl[2] = hsl[2].coerceIn(.20f, .36f)
+        return ColorUtils.HSLToColor(hsl)
     }
 }
 
