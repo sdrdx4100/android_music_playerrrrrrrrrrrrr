@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -17,6 +18,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -33,9 +37,11 @@ import com.sdrdx4100.quietplayer.MainViewModel
 import com.sdrdx4100.quietplayer.PlayerUiState
 import com.sdrdx4100.quietplayer.data.Song
 import com.sdrdx4100.quietplayer.data.DURATION_KEY
+import com.sdrdx4100.quietplayer.external.ExternalSessionBridge
+import com.sdrdx4100.quietplayer.external.ExternalSessionState
 import kotlin.math.roundToLong
 
-private enum class Destination { Library, NowPlaying }
+private enum class Destination { Library, NowPlaying, External }
 private enum class LibraryTab { Songs, Albums, Artists }
 
 @Composable
@@ -43,6 +49,9 @@ fun QuietPlayerApp(
     state: PlayerUiState,
     hasAudioPermission: Boolean,
     requestPermission: () -> Unit,
+    externalState: ExternalSessionState,
+    hasNotificationAccess: Boolean,
+    requestNotificationAccess: () -> Unit,
     viewModel: MainViewModel,
 ) {
     var destination by rememberSaveable { mutableStateOf(Destination.Library) }
@@ -61,12 +70,19 @@ fun QuietPlayerApp(
                     !hasAudioPermission -> PermissionScreen(requestPermission)
                     destination == Destination.Library -> LibraryScreen(
                         state = state,
+                        onExternal = { destination = Destination.External },
                         onSong = { song, source ->
                             viewModel.playSong(song, source)
                             destination = Destination.NowPlaying
                         },
                     )
-                    else -> NowPlayingScreen(state, viewModel, { destination = Destination.Library })
+                    destination == Destination.NowPlaying -> NowPlayingScreen(state, viewModel, { destination = Destination.Library })
+                    else -> ExternalSessionScreen(
+                        state = externalState,
+                        hasAccess = hasNotificationAccess,
+                        requestAccess = requestNotificationAccess,
+                        onLibrary = { destination = Destination.Library },
+                    )
                 }
             }
         }
@@ -95,7 +111,7 @@ private fun PermissionScreen(onRequest: () -> Unit) {
 }
 
 @Composable
-private fun LibraryScreen(state: PlayerUiState, onSong: (Song, List<Song>) -> Unit) {
+private fun LibraryScreen(state: PlayerUiState, onExternal: () -> Unit, onSong: (Song, List<Song>) -> Unit) {
     var tab by rememberSaveable { mutableStateOf(LibraryTab.Songs) }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(
@@ -104,6 +120,12 @@ private fun LibraryScreen(state: PlayerUiState, onSong: (Song, List<Song>) -> Un
         ) {
             Text("Library", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Text("${state.songs.size} songs", color = SecondaryText)
+            Spacer(Modifier.width(12.dp))
+            OutlinedButton(onClick = onExternal) {
+                Icon(Icons.Default.Cast, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(7.dp))
+                Text("External")
+            }
         }
         PrimaryTabRow(selectedTabIndex = tab.ordinal, containerColor = Background, divider = {}) {
             LibraryTab.entries.forEach { item ->
@@ -171,9 +193,9 @@ private fun NowPlayingScreen(state: PlayerUiState, viewModel: MainViewModel, onL
         val landscape = maxWidth > maxHeight
         if (landscape) {
             Row(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp)) {
-                NowPlayingPane(state, viewModel, onLibrary, Modifier.weight(0.62f).fillMaxHeight())
+                NowPlayingPane(state, viewModel, onLibrary, Modifier.weight(0.70f).fillMaxHeight())
                 Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
-                QueuePane(state, viewModel, Modifier.weight(0.38f).fillMaxHeight())
+                QueuePane(state, viewModel, Modifier.weight(0.30f).fillMaxHeight())
             }
         } else {
             Column(Modifier.fillMaxSize()) {
@@ -196,10 +218,17 @@ private fun NowPlayingPane(
     BoxWithConstraints(modifier.padding(end = 22.dp)) {
         val wide = maxWidth > 560.dp
         if (wide) {
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                Artwork(item?.mediaMetadata?.artworkUri?.toString(), Modifier.weight(0.48f).aspectRatio(1f))
-                Spacer(Modifier.width(26.dp))
-                PlayerDetails(state, viewModel, onLibrary, Modifier.weight(0.52f))
+            Row(
+                Modifier.fillMaxSize().padding(start = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Artwork(
+                    item?.mediaMetadata?.artworkUri?.toString(),
+                    Modifier.weight(.55f).aspectRatio(1f),
+                    elevated = true,
+                )
+                Spacer(Modifier.width(34.dp))
+                PlayerDetails(state, viewModel, onLibrary, Modifier.weight(.45f).padding(end = 8.dp))
             }
         } else {
             Column(
@@ -222,6 +251,7 @@ private fun NowPlayingPane(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun PlayerDetails(
     state: PlayerUiState,
     viewModel: MainViewModel,
@@ -239,14 +269,14 @@ private fun PlayerDetails(
         }
         Text(
             metadata?.title?.toString() ?: "Choose a song",
-            fontSize = 24.sp,
-            lineHeight = 29.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 32.sp,
+            lineHeight = 38.sp,
+            fontWeight = FontWeight.Bold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(7.dp))
-        Text(metadata?.artist?.toString() ?: "Quiet Player", color = SecondaryText, fontSize = 15.sp, maxLines = 1)
+        Text(metadata?.artist?.toString() ?: "Quiet Player", color = PrimaryText.copy(alpha = .70f), fontSize = 17.sp, maxLines = 1)
         Text(metadata?.albumTitle?.toString().orEmpty(), color = SecondaryText.copy(alpha = 0.72f), fontSize = 13.sp, maxLines = 1)
         Spacer(Modifier.height(20.dp))
         Slider(
@@ -256,6 +286,9 @@ private fun PlayerDetails(
             valueRange = 0f..state.durationMs.coerceAtLeast(1L).toFloat(),
             enabled = state.currentItem != null,
             modifier = Modifier.height(24.dp).testTag("seek_bar"),
+            thumb = {
+                Box(Modifier.size(12.dp).background(PrimaryText, CircleShape))
+            },
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(formatDuration(sliderValue.toLong()), color = SecondaryText, fontSize = 11.sp)
@@ -298,10 +331,10 @@ private fun PlaybackControls(state: PlayerUiState, viewModel: MainViewModel) {
 @Composable
 private fun QueuePane(state: PlayerUiState, viewModel: MainViewModel, modifier: Modifier) {
     val listState = rememberLazyListState()
-    Column(modifier.padding(start = 20.dp)) {
+    Column(modifier.padding(start = 16.dp)) {
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f)) {
-                Text("Up Next", fontSize = 20.sp, fontWeight = FontWeight.Medium)
+                Text("Up Next", fontSize = 18.sp, fontWeight = FontWeight.Medium)
                 Text("${state.queue.size} tracks", fontSize = 12.sp, color = SecondaryText)
             }
             Icon(Icons.Default.DragHandle, "Long press and drag to reorder", tint = SecondaryText, modifier = Modifier.padding(10.dp))
@@ -345,29 +378,199 @@ private fun QueueRow(
                 }
             }
             .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Artwork(item.mediaMetadata.artworkUri?.toString(), Modifier.size(42.dp))
-        Spacer(Modifier.width(11.dp))
+        Artwork(item.mediaMetadata.artworkUri?.toString(), Modifier.size(36.dp))
+        Spacer(Modifier.width(9.dp))
         if (playing) {
             Icon(Icons.Default.GraphicEq, null, tint = Accent, modifier = Modifier.size(15.dp))
             Spacer(Modifier.width(6.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
-            Text(item.mediaMetadata.artist?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = SecondaryText)
+            Text(
+                item.mediaMetadata.title?.toString().orEmpty(),
+                color = if (playing) PrimaryText else SecondaryText.copy(alpha = .58f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 13.sp,
+            )
+            Text(
+                item.mediaMetadata.artist?.toString().orEmpty(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 11.sp,
+                color = SecondaryText.copy(alpha = if (playing) .8f else .42f),
+            )
         }
         Text(formatDuration(item.mediaMetadata.extras?.getLong(DURATION_KEY) ?: 0L), color = SecondaryText, fontSize = 11.sp)
-        IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
+        IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Default.Close, "Remove from queue", Modifier.size(17.dp), tint = SecondaryText)
         }
     }
 }
 
 @Composable
-private fun Artwork(uri: String?, modifier: Modifier) {
-    Box(modifier.clip(RoundedCornerShape(10.dp)).background(SurfaceRaised), contentAlignment = Alignment.Center) {
+@OptIn(ExperimentalMaterial3Api::class)
+private fun ExternalSessionScreen(
+    state: ExternalSessionState,
+    hasAccess: Boolean,
+    requestAccess: () -> Unit,
+    onLibrary: () -> Unit,
+) {
+    if (!hasAccess) {
+        Column(
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(28.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(Icons.Default.Cast, null, Modifier.size(42.dp), tint = Accent)
+            Spacer(Modifier.height(18.dp))
+            Text("Control another music app", fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Notification access lets Quiet Player display and control the active Apple Music media session. Notification content is not stored.",
+                color = SecondaryText,
+            )
+            Spacer(Modifier.height(22.dp))
+            Button(onClick = requestAccess) { Text("Open notification access") }
+            TextButton(onClick = onLibrary) { Text("Back to local library") }
+        }
+        return
+    }
+
+    var clock by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+    LaunchedEffect(state.isPlaying, state.positionMs) {
+        while (state.isPlaying) {
+            clock = android.os.SystemClock.elapsedRealtime()
+            kotlinx.coroutines.delay(500)
+        }
+    }
+    val position = state.estimatedPosition(clock)
+    BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().testTag("external_session")) {
+        val landscape = maxWidth > maxHeight
+        val detail: @Composable (Modifier) -> Unit = { modifier ->
+            Row(
+                modifier
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(state.accentColor).copy(alpha = .22f), Color.Transparent),
+                            center = Offset(380f, 560f),
+                            radius = 1050f,
+                        )
+                    )
+                    .padding(start = 28.dp, end = 24.dp, top = 22.dp, bottom = 22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Artwork(
+                    state.artwork,
+                    Modifier.weight(.55f).aspectRatio(1f),
+                    elevated = true,
+                )
+                Spacer(Modifier.width(38.dp))
+                Column(
+                    Modifier.weight(.45f),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Library") }
+                        Text(state.appName ?: "External session", color = Accent, fontSize = 13.sp)
+                    }
+                    Text(state.title, fontSize = 34.sp, lineHeight = 39.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(7.dp))
+                    Text(state.artist, color = PrimaryText.copy(alpha = .70f), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(state.album, color = SecondaryText.copy(alpha = .72f), fontSize = 13.sp, maxLines = 1)
+                    Spacer(Modifier.height(18.dp))
+                    Slider(
+                        value = position.toFloat().coerceIn(0f, state.durationMs.coerceAtLeast(1L).toFloat()),
+                        onValueChange = { ExternalSessionBridge.seekTo(it.toLong()) },
+                        valueRange = 0f..state.durationMs.coerceAtLeast(1L).toFloat(),
+                        enabled = state.connected && state.durationMs > 0,
+                        thumb = {
+                            Box(Modifier.size(12.dp).background(PrimaryText, CircleShape))
+                        },
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(formatDuration(position), color = SecondaryText, fontSize = 11.sp)
+                        Text(formatDuration(state.durationMs), color = SecondaryText, fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = ExternalSessionBridge::previous, modifier = Modifier.size(54.dp)) {
+                            Icon(Icons.Default.SkipPrevious, "Previous", Modifier.size(30.dp))
+                        }
+                        FilledIconButton(
+                            onClick = ExternalSessionBridge::togglePlay,
+                            modifier = Modifier.size(60.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(containerColor = PrimaryText, contentColor = Background),
+                        ) {
+                            Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play or pause", Modifier.size(32.dp))
+                        }
+                        IconButton(onClick = ExternalSessionBridge::next, modifier = Modifier.size(54.dp)) {
+                            Icon(Icons.Default.SkipNext, "Next", Modifier.size(30.dp))
+                        }
+                    }
+                }
+            }
+        }
+        val queue: @Composable (Modifier) -> Unit = { modifier ->
+            Column(modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text("Up Next", fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    if (state.queue.isEmpty()) "${state.appName ?: "The source app"} is not sharing its queue" else "${state.queue.size} tracks from ${state.appName}",
+                    color = SecondaryText,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                LazyColumn {
+                    itemsIndexed(state.queue, key = { _, item -> item.id }) { _, item ->
+                        val current = item.id == state.currentQueueId
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(if (current) SurfaceRaised else Color.Transparent, RoundedCornerShape(8.dp))
+                                .clickable { ExternalSessionBridge.playQueueItem(item.id) }
+                                .padding(horizontal = 7.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Artwork(item.artwork, Modifier.size(36.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    item.title,
+                                    color = if (current) PrimaryText else SecondaryText.copy(alpha = .58f),
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(item.subtitle, color = SecondaryText.copy(alpha = if (current) .8f else .42f), fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (landscape) {
+            Row(Modifier.fillMaxSize()) {
+                detail(Modifier.weight(.70f).fillMaxHeight())
+                Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
+                queue(Modifier.weight(.30f).fillMaxHeight())
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                detail(Modifier.weight(.65f).fillMaxWidth())
+                Box(Modifier.height(1.dp).fillMaxWidth().background(Hairline))
+                queue(Modifier.weight(.35f).fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun Artwork(uri: Any?, modifier: Modifier, elevated: Boolean = false) {
+    val shape = RoundedCornerShape(if (elevated) 16.dp else 9.dp)
+    val styled = if (elevated) modifier.shadow(14.dp, shape, ambientColor = Color.Black, spotColor = Color.Black) else modifier
+    Box(styled.clip(shape).background(SurfaceRaised), contentAlignment = Alignment.Center) {
         SubcomposeAsyncImage(
                 model = uri,
                 contentDescription = "Album artwork",
